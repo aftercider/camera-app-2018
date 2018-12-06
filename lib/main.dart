@@ -4,6 +4,7 @@ import 'dart:io'; // ファイルの入出力
 import 'package:camera/camera.dart'; // カメラモジュール
 import 'package:flutter/material.dart'; // マテリアルデザイン
 import 'package:path_provider/path_provider.dart'; // ファイルパスモジュール
+import 'package:simple_permissions/simple_permissions.dart'; // パーミッションモジュール
 
 List<CameraDescription> cameras; // 使用できるカメラのリスト
 
@@ -76,6 +77,9 @@ class _CameraWidgetState extends State<CameraWidget> {
     // カメラのセットアップ。セットアップが終わったらもう一回buildが走るので、
     // controllerがnullかどうかで処理実施有無を判定。
     if (controller == null) {
+      if (cameras.length == 0) {
+        throw Exception("使用できるカメラがありません");
+      }
       setUpCamera(cameras[0]);
     }
     return sc;
@@ -112,6 +116,10 @@ class _CameraWidgetState extends State<CameraWidget> {
 
     await controller.initialize();
 
+    if(!await SimplePermissions.checkPermission(Permission.WriteExternalStorage)){
+      SimplePermissions.requestPermission(Permission.WriteExternalStorage);
+    }
+
     if (mounted) {
       setState(() {});
     }
@@ -132,7 +140,8 @@ class _CameraWidgetState extends State<CameraWidget> {
     if (!controller.value.isInitialized) {
       return null;
     }
-    final Directory extDir = await getApplicationDocumentsDirectory();
+
+    final Directory extDir = await getExternalStorageDirectory();
     final String dirPath = '${extDir.path}/Pictures/flutter_test';
     await Directory(dirPath).create(recursive: true);
     final String filePath = '$dirPath/${timestamp()}.jpg';
