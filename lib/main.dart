@@ -4,6 +4,7 @@ import 'dart:io'; // ファイルの入出力
 import 'package:camera/camera.dart'; // カメラモジュール
 import 'package:flutter/material.dart'; // マテリアルデザイン
 import 'package:path_provider/path_provider.dart'; // ファイルパスモジュール
+import 'package:image_picker_saver/image_picker_saver.dart'; // iOSカメラロール用パスモジュール
 import 'package:simple_permissions/simple_permissions.dart'; // パーミッションモジュール
 
 List<CameraDescription> cameras; // 使用できるカメラのリスト
@@ -116,8 +117,13 @@ class _CameraWidgetState extends State<CameraWidget> {
 
     await controller.initialize();
 
-    if(!await SimplePermissions.checkPermission(Permission.WriteExternalStorage)){
+    // パーミッションの確認・要求
+    if (Platform.isAndroid &&
+        !await SimplePermissions.checkPermission(Permission.WriteExternalStorage)) {
       SimplePermissions.requestPermission(Permission.WriteExternalStorage);
+    } else if (Platform.isIOS &&
+        !await SimplePermissions.checkPermission(Permission.PhotoLibrary)) {
+      SimplePermissions.requestPermission(Permission.PhotoLibrary);
     }
 
     if (mounted) {
@@ -135,22 +141,39 @@ class _CameraWidgetState extends State<CameraWidget> {
     });
   }
 
-  // 画像保存処理
+  // 画像撮影・保存処理
   Future<String> takePicture() async {
     if (!controller.value.isInitialized) {
       return null;
     }
 
-    final Directory extDir = await getExternalStorageDirectory();
-    final String dirPath = '${extDir.path}/Pictures/flutter_test';
+    Directory dir;
+    if (Platform.isAndroid) {
+      dir = await getExternalStorageDirectory(); // 外部ストレージに保存
+    } else if (Platform.isIOS) {
+      dir = await getTemporaryDirectory(); // 一時ディレクトリに保存
+    } else {
+      return null;
+    }
+
+    final String dirPath = '${dir.path}/Pictures/flutter_test';
     await Directory(dirPath).create(recursive: true);
-    final String filePath = '$dirPath/${timestamp()}.jpg';
+    String filePath = '$dirPath/${timestamp()}.jpg';
 
     if (controller.value.isTakingPicture) {
       return null;
     }
 
     await controller.takePicture(filePath);
+
+    // filePathに保存されたデータをiOSならPhotoLibrary領域にコピーする
+    if (Platform.isIOS) {
+      String tmpPath = filePath;
+      var savedFile = File.fromUri(Uri.file(tmpPath));
+      filePath = await ImagePickerSaver.saveFile(
+          fileData: savedFile.readAsBytesSync());
+    }
+
     return filePath;
   }
 }
